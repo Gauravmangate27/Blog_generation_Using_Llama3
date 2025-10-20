@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Llama 3 Blog Generation Engine</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #111827;
+            --card-color: #1F2937;
+            --text-color: #f3f4f6;
+            --text-muted: #9ca3af;
+            --primary-color: #a855f7;
+            --green: #22c55e;
+            --red: #ef4444;
+            --terminal-bg: #18181b;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+        .container { max-width: 900px; margin: 0 auto; padding: 0 2rem; }
+        section { padding: 4rem 0; }
+        h1, h2 {
+            line-height: 1.2;
+            margin-bottom: 1rem;
+            font-weight: 700;
+            text-align: center;
+        }
+        h1 { font-size: 3.5rem; }
+        h2 { font-size: 2.5rem; margin-bottom: 3rem; }
+        
+        /* --- New Form Styles --- */
+        #generation-form {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 3rem;
+        }
+        .form-label {
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+        .form-input {
+            width: 100%;
+            padding: 1rem;
+            font-family: 'Inter', sans-serif;
+            font-size: 1.1rem;
+            background-color: var(--card-color);
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: var(--text-color);
+            resize: vertical;
+        }
+        .form-button {
+            display: inline-block;
+            padding: 1rem 1.8rem;
+            background-color: var(--primary-color);
+            color: #fff;
+            font-size: 1.1rem;
+            font-weight: 500;
+            text-decoration: none;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .form-button:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(168, 85, 247, 0.5);
+        }
+        .form-button:disabled {
+            background-color: #333;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        /* --- New Results Area --- */
+        #results-container {
+            background: var(--terminal-bg);
+            border-radius: 10px;
+            border: 1px solid #333;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+        .terminal-header {
+            background: #333;
+            padding: 0.75rem;
+            border-top-left-radius: 9px;
+            border-top-right-radius: 9px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .terminal-dot { width: 12px; height: 12px; border-radius: 50%; }
+        .dot-red { background: #ff5f56; }
+        .dot-yellow { background: #ffbd2e; }
+        .dot-green { background: #27c93f; }
+        
+        /* This pre tag will hold our streaming text */
+        #result-stream {
+            padding: 2rem;
+            font-family: 'Source Code Pro', monospace;
+            font-size: 1rem;
+            white-space: pre-wrap; /* This is key! */
+            word-wrap: break-word;
+            color: var(--text-muted);
+            min-height: 200px;
+        }
+        
+        /* Blinking cursor effect for the *end* of the stream */
+        .cursor {
+            display: inline-block;
+            width: 10px;
+            height: 1.1rem;
+            background: var(--green);
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+        .error-message {
+            color: var(--red);
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+
+    <main>
+        <section id="generator">
+            <div class="container">
+                <h1>🚀 Llama 3 Blog Generator</h1>
+                
+                <form id="generation-form">
+                    <label for="topic-input" class="form-label">
+                        Enter your blog post topic:
+                    </label>
+                    <textarea id="topic-input" class="form-input" rows="3" placeholder="e.g., 'The Top 5 AI Tools for Small Business Marketing'"></textarea>
+                    <button type="submit" id="generate-button" class="form-button">
+                        Generate Blog Post
+                    </button>
+                </form>
+
+                <div id="results-container">
+                    <div class="terminal-header">
+                        <div class="terminal-dot dot-red"></div>
+                        <div class="terminal-dot dot-yellow"></div>
+                        <div class="terminal-dot dot-green"></div>
+                    </div>
+                    <pre id="result-stream"></pre>
+                </div>
+
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // Get references to our HTML elements
+        const form = document.getElementById('generation-form');
+        const button = document.getElementById('generate-button');
+        const resultStream = document.getElementById('result-stream');
+        
+        // This will hold our connection to the server
+        let eventSource;
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault(); // Stop the form from submitting normally
+            
+            const topic = document.getElementById('topic-input').value;
+            
+            // Clear previous results and show a "waiting" message
+            resultStream.innerHTML = 'Waiting for Llama 3 to respond... <span class="cursor"></span>';
+            button.disabled = true;
+            
+            // --- This is the core of Server-Sent Events (SSE) ---
+            
+            // 1. Create a new EventSource connection to our Flask backend
+            // We pass the topic as a POST request, so we need to use fetch
+            // and then read the stream. A simple EventSource GET is harder with form data.
+            
+            fetch('/generate-blog', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ topic: topic }),
+            
+            }).then(response => {
+                // Get the readable stream from the response body
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                resultStream.innerHTML = ''; // Clear the "waiting" message
+
+                // Function to read the stream
+                function readStream() {
+                    reader.read().then(({ done, value }) => {
+                        if (done) {
+                            // Stream is finished
+                            button.disabled = false;
+                            // Remove the cursor
+                            const cursor = resultStream.querySelector('.cursor');
+                            if (cursor) cursor.remove();
+                            return;
+                        }
+
+                        // Decode the chunk of data
+                        const chunk = decoder.decode(value);
+                        
+                        // SSE messages can be split, so we process each line
+                        const lines = chunk.split('\n');
+                        
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const data = line.substring(6); // Remove "data: "
+                                
+                                if (data === '[END_OF_STREAM]') {
+                                    // Our custom end signal
+                                    button.disabled = false;
+                                    const cursor = resultStream.querySelector('.cursor');
+                                    if (cursor) cursor.remove();
+                                    return;
+                                }
+
+                                try {
+                                    // Parse the JSON data we sent
+                                    const parsed = JSON.parse(data);
+                                    
+                                    if (parsed.error) {
+                                        // Handle errors from the backend
+                                        resultStream.innerHTML += `<span class="error-message">ERROR: ${parsed.error}</span>`;
+                                    } else if (parsed.text) {
+                                        // This is the main text chunk!
+                                        // Append the new text
+                                        // We handle newlines from the text chunk
+                                        resultStream.innerText += parsed.text;
+                                    }
+                                    
+                                } catch (e) {
+                                    // In case of broken JSON
+                                    console.error('Failed to parse stream data:', data, e);
+                                }
+                            }
+                        }
+                        
+                        // Keep reading the stream
+                        readStream();
+                    
+                    }).catch(err => {
+                        console.error('Stream reading error:', err);
+                        resultStream.innerText += '\n\n<span class="error-message">Error reading stream.</span>';
+                        button.disabled = false;
+                    });
+                }
+                
+                // Start reading the stream
+                readStream();
+                
+            }).catch(err => {
+                console.error('Fetch error:', err);
+                resultStream.innerText = `<span class="error-message">Failed to connect to server. Is it running?</span>`;
+                button.disabled = false;
+            });
+        });
+
+    </script>
+</body>
+</html>
