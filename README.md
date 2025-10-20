@@ -1,1 +1,1 @@
-# auto-admin-hackathon
+#Blog Generation using lamma3.
