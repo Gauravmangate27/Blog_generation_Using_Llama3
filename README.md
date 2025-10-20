@@ -12,7 +12,6 @@
 🎬 Demo: See It In Action
 Imagine going from a simple prompt to a full article in seconds. This is what it looks like in action.
 
-(Recommendation: Replace this with an actual animated GIF or short video of your script running. A tool like Terminalizer or asciinema can create great terminal recordings.)
 
 🌟 About the Project
 Struggling with writer's block? 😫 Finding it impossible to keep up with the constant demand for fresh content? This project is your solution.
