@@ -1,4 +1,3 @@
-Here is a more interactive and visually engaging README.md, using Markdown features like collapsible sections, emojis, and a placeholder for an animated GIF to make it feel more dynamic.
 
 
 
